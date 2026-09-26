@@ -1,3 +1,6 @@
-# control_node:
-#   ros__parameters:
-    
+control_node:
+  ros__parameters:
+    lookahead_distance: 1.0  # m, bigger = smoother but cuts corners more
+    goal_tolerance: 0.3      # m
+    linear_speed: 0.5        # m/s
+    max_angular_speed: 1.0   # rad/s
