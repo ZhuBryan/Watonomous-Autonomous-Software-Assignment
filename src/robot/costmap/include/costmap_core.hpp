@@ -30,8 +30,6 @@ class CostmapCore {
     // meters -> cell. gx/gy get set even if off the grid, return tells you if it's on
     bool worldToGrid(double x, double y, int& gx, int& gy) const;
     bool inBounds(int gx, int gy) const;
-    // bresenham, marks free up to (but not including) the end cell
-    void raytraceFree(int x0, int y0, int x1, int y1);
     void markObstacle(int gx, int gy);
     void inflateObstacles();
 

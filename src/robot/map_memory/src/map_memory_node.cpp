@@ -13,6 +13,7 @@ MapMemoryNode::MapMemoryNode() : Node("map_memory"), map_memory_(robot::MapMemor
   std::string frame_id = this->declare_parameter<std::string>("frame_id", "sim_world");
   update_distance_ = this->declare_parameter<double>("update_distance", 1.5);
   int update_period_ms = this->declare_parameter<int>("update_period_ms", 1000);
+  max_fuse_yaw_rate_ = this->declare_parameter<double>("max_fuse_yaw_rate", 0.2);
 
   map_memory_.configure(resolution, width, height, origin_x, origin_y, frame_id);
 
@@ -36,14 +37,18 @@ void MapMemoryNode::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg) {
   robot_x_ = msg->pose.pose.position.x;
   robot_y_ = msg->pose.pose.position.y;
   robot_yaw_ = robot::MapMemoryCore::yawFromQuaternion(msg->pose.pose.orientation);
+  robot_yaw_rate_ = msg->twist.twist.angular.z;
   have_odom_ = true;
 }
 
 void MapMemoryNode::timerCallback() {
   if (have_costmap_ && have_odom_) {
     double distance = std::hypot(robot_x_ - last_fuse_x_, robot_y_ - last_fuse_y_);
+    // costmap and odom can be ~0.1s apart, so while spinning the costmap gets pasted in
+    // rotated a few degrees. just wait until we're not turning much
+    bool turning = std::abs(robot_yaw_rate_) > max_fuse_yaw_rate_;
     // fuse right away the first time so the planner has something to work with
-    if (!has_fused_ || distance >= update_distance_) {
+    if (!has_fused_ || (distance >= update_distance_ && !turning)) {
       map_memory_.fuse(latest_costmap_, robot_x_, robot_y_, robot_yaw_);
       last_fuse_x_ = robot_x_;
       last_fuse_y_ = robot_y_;

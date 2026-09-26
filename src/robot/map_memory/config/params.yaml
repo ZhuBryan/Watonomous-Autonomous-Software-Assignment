@@ -8,3 +8,4 @@ map_memory_node:
     frame_id: sim_world     # same as odom
     update_distance: 1.5    # m moved before fusing again
     update_period_ms: 1000
+    max_fuse_yaw_rate: 0.2  # rad/s, don't fuse while turning faster than this

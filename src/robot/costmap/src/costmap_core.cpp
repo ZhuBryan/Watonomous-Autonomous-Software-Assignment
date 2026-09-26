@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
 
 #include "costmap_core.hpp"
 
@@ -29,36 +28,51 @@ void CostmapCore::update(const sensor_msgs::msg::LaserScan& scan) {
   std::fill(grid_.begin(), grid_.end(), -1);
   obstacles_.clear();
 
-  // lidar is at (0,0) in its own frame
-  int robot_gx, robot_gy;
-  worldToGrid(0.0, 0.0, robot_gx, robot_gy);
+  const int n = static_cast<int>(scan.ranges.size());
+  if (n == 0) {
+    return;
+  }
 
-  std::vector<std::pair<int, int>> hits;
-  for (size_t i = 0; i < scan.ranges.size(); ++i) {
+  // how far each beam got before hitting something (range_max if it hit nothing), -1 = bad reading
+  std::vector<double> reach(n, -1.0);
+  for (int i = 0; i < n; ++i) {
     double range = scan.ranges[i];
     if (std::isnan(range) || range <= scan.range_min) {
       continue;
     }
-
-    // inf / range_max = didn't hit anything, so the whole beam is free space
     bool hit = std::isfinite(range) && range < scan.range_max;
-    double length = hit ? range : scan.range_max;
+    reach[i] = hit ? range : scan.range_max;
+  }
 
-    double angle = scan.angle_min + i * scan.angle_increment;
-    double x = length * std::cos(angle);
-    double y = length * std::sin(angle);
-
-    int gx, gy;
-    bool on_grid = worldToGrid(x, y, gx, gy);
-    raytraceFree(robot_gx, robot_gy, gx, gy);
-    if (hit && on_grid) {
-      hits.emplace_back(gx, gy);
+  // free space: for every cell, find the beam pointing at it. if the cell is closer than
+  // where that beam stopped, the beam went through it so it's free. doing it per cell
+  // instead of tracing each beam means no unknown gaps between beams far from the robot
+  for (int gy = 0; gy < height_; ++gy) {
+    for (int gx = 0; gx < width_; ++gx) {
+      double x = origin_x_ + (gx + 0.5) * resolution_;
+      double y = origin_y_ + (gy + 0.5) * resolution_;
+      double r = std::hypot(x, y);
+      int i = static_cast<int>(std::lround((std::atan2(y, x) - scan.angle_min) / scan.angle_increment));
+      if (i < 0 || i >= n || reach[i] < 0.0) {
+        continue;
+      }
+      if (r < reach[i]) {
+        grid_[gy * width_ + gx] = 0;
+      }
     }
   }
 
-  // mark obstacles after all the raytracing, otherwise a later beam can clear an earlier hit
-  for (const auto& [gx, gy] : hits) {
-    markObstacle(gx, gy);
+  // obstacles go on after the free space
+  for (int i = 0; i < n; ++i) {
+    double range = scan.ranges[i];
+    if (!std::isfinite(range) || range <= scan.range_min || range >= scan.range_max) {
+      continue;
+    }
+    double angle = scan.angle_min + i * scan.angle_increment;
+    int gx, gy;
+    if (worldToGrid(range * std::cos(angle), range * std::sin(angle), gx, gy)) {
+      markObstacle(gx, gy);
+    }
   }
 
   inflateObstacles();
@@ -73,33 +87,6 @@ bool CostmapCore::worldToGrid(double x, double y, int& gx, int& gy) const {
 
 bool CostmapCore::inBounds(int gx, int gy) const {
   return gx >= 0 && gx < width_ && gy >= 0 && gy < height_;
-}
-
-void CostmapCore::raytraceFree(int x0, int y0, int x1, int y1) {
-  // bresenham line
-  int dx = std::abs(x1 - x0);
-  int dy = -std::abs(y1 - y0);
-  int sx = (x0 < x1) ? 1 : -1;
-  int sy = (y0 < y1) ? 1 : -1;
-  int err = dx + dy;
-
-  while (!(x0 == x1 && y0 == y1)) {
-    // starts in the middle so once it's off the grid it's not coming back
-    if (!inBounds(x0, y0)) {
-      return;
-    }
-    grid_[y0 * width_ + x0] = 0;
-
-    int e2 = 2 * err;
-    if (e2 >= dy) {
-      err += dy;
-      x0 += sx;
-    }
-    if (e2 <= dx) {
-      err += dx;
-      y0 += sy;
-    }
-  }
 }
 
 void CostmapCore::markObstacle(int gx, int gy) {

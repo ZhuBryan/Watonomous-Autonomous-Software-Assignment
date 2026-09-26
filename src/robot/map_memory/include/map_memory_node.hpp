@@ -26,6 +26,7 @@ class MapMemoryNode : public rclcpp::Node {
     nav_msgs::msg::OccupancyGrid latest_costmap_;
     bool have_costmap_ = false;
     double robot_x_ = 0.0, robot_y_ = 0.0, robot_yaw_ = 0.0;
+    double robot_yaw_rate_ = 0.0;
     bool have_odom_ = false;
 
     // pose at the last fuse
@@ -33,6 +34,7 @@ class MapMemoryNode : public rclcpp::Node {
     bool has_fused_ = false;
 
     double update_distance_;
+    double max_fuse_yaw_rate_;
 };
 
 #endif
